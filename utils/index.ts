@@ -5,10 +5,9 @@ export const OpenAIStream = async (messages: Message[]) => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  const res = await fetch("https://chatgptapifree-production.up.railway.app/v1/chat/completions", {
+  const res = await fetch("https://chatgptapifree-production.up.railway.app/v1", {
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     },
     method: "POST",
     body: JSON.stringify({
@@ -54,9 +53,37 @@ export const OpenAIStream = async (messages: Message[]) => {
 
       const parser = createParser(onParse);
 
-      for await (const chunk of res.body as any) {
+      const curlCommand = `curl https://chatgptapifree-production.up.railway.app/v1 \
+          -H 'Content-Type: application/json' \
+          -d '${JSON.stringify({
+            model: OpenAIModel.DAVINCI_TURBO,
+            messages: [
+              {
+                role: "system",
+                content: `You are a helpful, friendly, assistant.`
+              },
+              ...messages
+            ],
+            max_tokens: 800,
+            temperature: 0.0,
+            stream: true
+          })}'`;
+
+      const eventSource = new EventSource(curlCommand);
+
+      eventSource.onmessage = (event: MessageEvent) => {
+        const chunk = event.data;
         parser.feed(decoder.decode(chunk));
-      }
+      };
+
+      eventSource.onerror = (error: any) => {
+        console.error("Error:", error);
+        controller.error(error);
+      };
+
+      controller.onabort = () => {
+        eventSource.close();
+      };
     }
   });
 
